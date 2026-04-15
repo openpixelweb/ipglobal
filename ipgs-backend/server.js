@@ -1,3 +1,5 @@
+require("dotenv").config(); // 🔥 LOAD ENV
+
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
@@ -21,7 +23,7 @@ app.use(express.urlencoded({ extended: true }));
 
 /* ================== SESSION ================== */
 app.use(session({
-  secret: "my-secret-key",
+  secret: process.env.SESSION_SECRET, // 🔥 FROM ENV
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -40,7 +42,7 @@ if (!fs.existsSync("uploads")) {
 }
 
 /* ================== MONGODB ================== */
-mongoose.connect("mongodb://localhost:27017/ipgs")
+mongoose.connect(process.env.MONGO_URI)
   .then(() => console.log("MongoDB Connected ✅"))
   .catch(err => console.log("MongoDB Error ❌", err));
 
@@ -228,4 +230,6 @@ app.put("/update-blog/:id", isAuth, upload.single("image"), async (req, res) => 
 });
 
 /* ================== SERVER ================== */
-app.listen(5000, () => console.log("Server running on port 5000 🚀"));
+app.listen(process.env.PORT, () =>
+  console.log(`Server running on port ${process.env.PORT} 🚀`)
+);
