@@ -99,7 +99,8 @@
 
   <body>
     <div class="sidebar">
-      <img src="http://localhost:5000/images/logo.png" class="img-dah" />
+      <!-- ✅ FIXED LOGO PATH -->
+      <img src="/images/logo.png" class="img-dah" />
       <a href="#" onclick="loadBlogs()">Blogs</a>
       <a href="#" onclick="logout()">Logout</a>
     </div>
@@ -176,25 +177,39 @@
       </div>
     </div>
 
-    <!-- ✅ CKEditor 5 -->
+    <!-- SCRIPTS -->
     <script src="https://cdn.ckeditor.com/ckeditor5/41.4.2/classic/ckeditor.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
+      // ✅ AUTO BASE URL (works in cloud)
+      const BASE = window.location.origin;
+
       let blogs = [],
         filtered = [],
         page = 1;
-      const BASE = "http://localhost:5000";
-      let modal = new bootstrap.Modal(document.getElementById("modal"));
 
-      let editor = null; // ✅ GLOBAL EDITOR
+      let modal = new bootstrap.Modal(document.getElementById("modal"));
+      let editor = null;
 
       init();
+
       async function init() {
-        const r = await fetch(BASE + "/check-auth", { credentials: "include" });
-        if (r.status !== 200) location.href = "login.html";
-        loadBlogs();
+        try {
+          const r = await fetch(BASE + "/check-auth", {
+            credentials: "include",
+          });
+
+          if (r.status !== 200) {
+            location.href = "login.html";
+            return;
+          }
+
+          loadBlogs();
+        } catch {
+          toast("Server error ❌", "error");
+        }
       }
 
       async function loadBlogs() {
@@ -202,6 +217,7 @@
           credentials: "include",
         });
         const d = await r.json();
+
         blogs = d.blogs;
         filtered = [...blogs];
         render();
@@ -214,18 +230,22 @@
         let html = "";
         data.forEach((b) => {
           html += `
-    <div class="blog-card">
-      <div style="width:20%"><b>${b.title}</b></div>
-      <div style="width:15%">${b.date || ""}</div>
-      <div style="width:30%">${short(b.content)}</div>
-      <div style="width:15%">
-        ${b.image ? `<img src="${BASE}/uploads/${b.image}" style="width:60px;height:40px;object-fit:cover;border-radius:6px;">` : ""}
-      </div>
-      <div style="width:20%">
-        <button class="btn btn-sm btn-warning" onclick="edit('${b._id}')">Edit</button>
-        <button class="btn btn-sm btn-danger" onclick="del('${b._id}')">Delete</button>
-      </div>
-    </div>`;
+          <div class="blog-card">
+            <div style="width:20%"><b>${b.title}</b></div>
+            <div style="width:15%">${b.date || ""}</div>
+            <div style="width:30%">${short(b.content)}</div>
+            <div style="width:15%">
+              ${
+                b.image
+                  ? `<img src="${BASE}/uploads/${b.image}" style="width:60px;height:40px;object-fit:cover;border-radius:6px;">`
+                  : ""
+              }
+            </div>
+            <div style="width:20%">
+              <button class="btn btn-sm btn-warning" onclick="edit('${b._id}')">Edit</button>
+              <button class="btn btn-sm btn-danger" onclick="del('${b._id}')">Delete</button>
+            </div>
+          </div>`;
         });
 
         document.getElementById("blogList").innerHTML = html;
@@ -250,7 +270,6 @@
         render();
       }
 
-      /* ✅ MODAL FIXED */
       async function openModal() {
         document.getElementById("blogForm").reset();
         document.getElementById("editId").value = "";
@@ -258,31 +277,13 @@
 
         if (editor) {
           await editor.destroy();
-          editor = null;
         }
 
-        editor = await ClassicEditor.create(
-          document.querySelector("#content"),
-          {
-            toolbar: [
-              "heading",
-              "bold",
-              "italic",
-              "link",
-              "bulletedList",
-              "numberedList",
-              "blockQuote",
-              "codeBlock",
-              "undo",
-              "redo",
-            ],
-          },
-        );
+        editor = await ClassicEditor.create(document.querySelector("#content"));
 
         modal.show();
       }
 
-      /* ✅ EDIT FIXED */
       async function edit(id) {
         let b = blogs.find((x) => x._id === id);
 
@@ -295,16 +296,21 @@
         editor.setData(b.content);
       }
 
-      /* ✅ SAVE FIXED */
       async function saveBlog() {
         let id = document.getElementById("editId").value;
         let fd = new FormData(document.getElementById("blogForm"));
         fd.set("content", editor.getData());
 
         let url = id ? BASE + "/update-blog/" + id : BASE + "/add-blog";
+
         let method = id ? "PUT" : "POST";
 
-        let r = await fetch(url, { method, body: fd, credentials: "include" });
+        let r = await fetch(url, {
+          method,
+          body: fd,
+          credentials: "include",
+        });
+
         let d = await r.json();
 
         if (d.success) {
@@ -314,29 +320,28 @@
         } else toast("Error ❌", "error");
       }
 
-      /* DELETE */
       async function del(id) {
         if (!confirm("Delete?")) return;
+
         let r = await fetch(BASE + "/delete-blog/" + id, {
           method: "DELETE",
           credentials: "include",
         });
+
         let d = await r.json();
+
         if (d.success) {
           toast("Deleted");
           loadBlogs();
         }
       }
 
-      /* IMAGE PREVIEW */
       let fileInput = document.getElementById("fileInput");
       let preview = document.getElementById("preview");
 
       fileInput.onchange = function () {
         let file = this.files[0];
-        if (file) {
-          preview.src = URL.createObjectURL(file);
-        }
+        if (file) preview.src = URL.createObjectURL(file);
       };
 
       function short(html) {
@@ -353,7 +358,9 @@
       }
 
       async function logout() {
-        await fetch(BASE + "/logout", { credentials: "include" });
+        await fetch(BASE + "/logout", {
+          credentials: "include",
+        });
         location.href = "login.html";
       }
     </script>
