@@ -1,4 +1,4 @@
-require("dotenv").config(); // 🔥 LOAD ENV
+require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
@@ -12,9 +12,7 @@ const app = express();
 
 /* ================== MIDDLEWARE ================== */
 app.use(cors({
-  origin: [
-    "http://localhost:5173"
-  ],
+  origin: true,
   credentials: true
 }));
 
@@ -23,11 +21,11 @@ app.use(express.urlencoded({ extended: true }));
 
 /* ================== SESSION ================== */
 app.use(session({
-  secret: process.env.SESSION_SECRET, // 🔥 FROM ENV
+  secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: false,
+    secure: false, // ⚠️ set true only if HTTPS + proxy
     httpOnly: true
   }
 }));
@@ -79,11 +77,9 @@ function isAuth(req, res, next) {
   }
 }
 
-/* ================== ROUTES ================== */
-
-// Test
+/* ================== ROOT REDIRECT FIX ================== */
 app.get("/", (req, res) => {
-  res.send("Backend running 🚀");
+  res.redirect("/login.html");
 });
 
 /* ===== LOGIN ===== */
@@ -100,7 +96,6 @@ app.post("/login", async (req, res) => {
       return res.status(401).json({ success: false, message: "Invalid credentials" });
     }
   } catch (err) {
-    console.log(err);
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
@@ -115,15 +110,13 @@ app.get("/logout", (req, res) => {
 /* ===== CHECK AUTH ===== */
 app.get("/check-auth", (req, res) => {
   if (req.session.admin) {
-    res.json({ success: true, message: "Authorized" });
+    res.json({ success: true });
   } else {
-    res.status(401).json({ success: false, message: "Unauthorized" });
+    res.status(401).json({ success: false });
   }
 });
 
 /* ===== BLOG CRUD ===== */
-
-// Add Blog
 app.post("/add-blog", isAuth, upload.single("image"), async (req, res) => {
   try {
     const blog = new Blog({
@@ -135,98 +128,62 @@ app.post("/add-blog", isAuth, upload.single("image"), async (req, res) => {
     });
 
     await blog.save();
-    res.json({ success: true, message: "Blog added" });
+    res.json({ success: true });
 
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({ success: false, message: "Error adding blog" });
+  } catch {
+    res.status(500).json({ success: false });
   }
 });
 
-/* ===== PAGINATION ===== */
 app.get("/blogs", async (req, res) => {
-  try {
-    let page = parseInt(req.query.page) || 1;
-    let limit = parseInt(req.query.limit) || 5;
+  let page = parseInt(req.query.page) || 1;
+  let limit = parseInt(req.query.limit) || 5;
 
-    const skip = (page - 1) * limit;
+  const skip = (page - 1) * limit;
 
-    const query = {
-      $or: [
-        { status: "A" },
-        { status: { $exists: false } }
-      ]
-    };
+  const query = {
+    $or: [{ status: "A" }, { status: { $exists: false } }]
+  };
 
-    const total = await Blog.countDocuments(query);
+  const total = await Blog.countDocuments(query);
 
-    const blogs = await Blog.find(query)
-      .sort({ _id: -1 })
-      .skip(skip)
-      .limit(limit);
+  const blogs = await Blog.find(query)
+    .sort({ _id: -1 })
+    .skip(skip)
+    .limit(limit);
 
-    res.json({
-      success: true,
-      blogs,
-      totalPages: Math.ceil(total / limit),
-      currentPage: page
-    });
-
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({ success: false, message: "Error fetching blogs" });
-  }
+  res.json({
+    success: true,
+    blogs,
+    totalPages: Math.ceil(total / limit),
+    currentPage: page
+  });
 });
 
-/* ===== DELETE BLOG ===== */
 app.delete("/delete-blog/:id", isAuth, async (req, res) => {
-  try {
-    const blog = await Blog.findById(req.params.id);
-
-    if (!blog) {
-      return res.status(404).json({ success: false, message: "Blog not found" });
-    }
-
-    await Blog.findByIdAndUpdate(req.params.id, { status: "D" });
-
-    res.json({ success: true, message: "Blog deleted" });
-
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({ success: false, message: "Error deleting blog" });
-  }
+  await Blog.findByIdAndUpdate(req.params.id, { status: "D" });
+  res.json({ success: true });
 });
 
-/* ===== UPDATE BLOG ===== */
 app.put("/update-blog/:id", isAuth, upload.single("image"), async (req, res) => {
-  try {
-    const blog = await Blog.findById(req.params.id);
+  const blog = await Blog.findById(req.params.id);
 
-    if (!blog) {
-      return res.status(404).json({ success: false, message: "Blog not found" });
+  const updateData = {
+    title: req.body.title,
+    content: req.body.content,
+    date: req.body.date
+  };
+
+  if (req.file) {
+    if (blog.image && fs.existsSync(`uploads/${blog.image}`)) {
+      fs.unlinkSync(`uploads/${blog.image}`);
     }
-
-    const updateData = {
-      title: req.body.title,
-      content: req.body.content,
-      date: req.body.date
-    };
-
-    if (req.file) {
-      if (blog.image && fs.existsSync(`uploads/${blog.image}`)) {
-        fs.unlinkSync(`uploads/${blog.image}`);
-      }
-      updateData.image = req.file.filename;
-    }
-
-    await Blog.findByIdAndUpdate(req.params.id, updateData);
-
-    res.json({ success: true, message: "Blog updated" });
-
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({ success: false, message: "Error updating blog" });
+    updateData.image = req.file.filename;
   }
+
+  await Blog.findByIdAndUpdate(req.params.id, updateData);
+
+  res.json({ success: true });
 });
 
 /* ================== SERVER ================== */
