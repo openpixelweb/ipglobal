@@ -21,11 +21,11 @@ app.use(express.urlencoded({ extended: true }));
 
 /* ================== SESSION ================== */
 app.use(session({
-  secret: process.env.SESSION_SECRET,
+  secret: process.env.SESSION_SECRET || "fallbackSecret",
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: false, // ⚠️ set true only if HTTPS + proxy
+    secure: false,
     httpOnly: true
   }
 }));
@@ -41,7 +41,7 @@ if (!fs.existsSync("uploads")) {
 
 /* ================== MONGODB ================== */
 mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log("MongoDB Connected ✅"))
+  .then(() => console.log("MongoDB Atlas Connected ✅"))
   .catch(err => console.log("MongoDB Error ❌", err));
 
 /* ================== MULTER ================== */
@@ -58,9 +58,7 @@ const Blog = mongoose.model("Blog", {
   content: String,
   date: String,
   image: String,
-  status: { type: String, default: "A" },
-  createdBy: String,
-  updatedBy: String
+  status: { type: String, default: "A" }
 });
 
 const Admin = mongoose.model("Admin", {
@@ -70,94 +68,86 @@ const Admin = mongoose.model("Admin", {
 
 /* ================== AUTH ================== */
 function isAuth(req, res, next) {
-  if (req.session.admin) {
-    next();
-  } else {
-    return res.status(401).json({ success: false, message: "Unauthorized" });
-  }
+  if (req.session.admin) return next();
+  return res.status(401).json({ success: false });
 }
 
-/* ================== ROOT REDIRECT FIX ================== */
+/* ================== ROOT ================== */
 app.get("/", (req, res) => {
   res.redirect("/login.html");
 });
 
-/* ===== LOGIN ===== */
+/* ================== CREATE ADMIN (RUN ONCE) ================== */
+app.get("/create-admin", async (req, res) => {
+  const exists = await Admin.findOne({ username: "admin" });
+
+  if (exists) return res.send("Admin already exists");
+
+  await Admin.create({
+    username: "admin",
+    password: "admin123"
+  });
+
+  res.send("Admin created");
+});
+
+/* ================== LOGIN ================== */
 app.post("/login", async (req, res) => {
   try {
     const { username, password } = req.body;
 
     const admin = await Admin.findOne({ username, password });
 
-    if (admin) {
-      req.session.admin = admin._id;
-      return res.json({ success: true, message: "Login success" });
-    } else {
+    if (!admin) {
       return res.status(401).json({ success: false, message: "Invalid credentials" });
     }
+
+    req.session.admin = admin._id;
+    res.json({ success: true });
+
   } catch (err) {
-    res.status(500).json({ success: false, message: "Server error" });
+    console.log(err);
+    res.status(500).json({ success: false });
   }
 });
 
-/* ===== LOGOUT ===== */
+/* ================== LOGOUT ================== */
 app.get("/logout", (req, res) => {
   req.session.destroy(() => {
-    res.json({ success: true, message: "Logout success" });
+    res.json({ success: true });
   });
 });
 
-/* ===== CHECK AUTH ===== */
+/* ================== CHECK AUTH ================== */
 app.get("/check-auth", (req, res) => {
-  if (req.session.admin) {
-    res.json({ success: true });
-  } else {
-    res.status(401).json({ success: false });
-  }
+  if (req.session.admin) return res.json({ success: true });
+  return res.status(401).json({ success: false });
 });
 
-/* ===== BLOG CRUD ===== */
-app.post("/add-blog", isAuth, upload.single("image"), async (req, res) => {
+/* ================== BLOG APIs ================== */
+app.get("/blogs", isAuth, async (req, res) => {
   try {
-    const blog = new Blog({
-      title: req.body.title,
-      content: req.body.content,
-      date: req.body.date,
-      image: req.file ? req.file.filename : "",
-      status: "A"
-    });
-
-    await blog.save();
-    res.json({ success: true });
-
+    const blogs = await Blog.find({ status: "A" }).sort({ _id: -1 });
+    res.json({ success: true, blogs });
   } catch {
     res.status(500).json({ success: false });
   }
 });
 
-app.get("/blogs", async (req, res) => {
-  let page = parseInt(req.query.page) || 1;
-  let limit = parseInt(req.query.limit) || 5;
+app.post("/add-blog", isAuth, upload.single("image"), async (req, res) => {
+  try {
+    await Blog.create({
+      title: req.body.title,
+      content: req.body.content,
+      date: req.body.date,
+      image: req.file ? req.file.filename : ""
+    });
 
-  const skip = (page - 1) * limit;
+    res.json({ success: true });
 
-  const query = {
-    $or: [{ status: "A" }, { status: { $exists: false } }]
-  };
-
-  const total = await Blog.countDocuments(query);
-
-  const blogs = await Blog.find(query)
-    .sort({ _id: -1 })
-    .skip(skip)
-    .limit(limit);
-
-  res.json({
-    success: true,
-    blogs,
-    totalPages: Math.ceil(total / limit),
-    currentPage: page
-  });
+  } catch {
+    res.status(500).json({ success: false });
+  }
 });
 
 app.delete("/delete-blog/:id", isAuth, async (req, res) => {
@@ -187,6 +177,6 @@ app.put("/update-blog/:id", isAuth, upload.single("image"), async (req, res) => 
 });
 
 /* ================== SERVER ================== */
-app.listen(process.env.PORT, () =>
-  console.log(`Server running on port ${process.env.PORT} 🚀`)
-);
+app.listen(process.env.PORT, () => {
+  console.log(`Server running on port ${process.env.PORT} 🚀`);
+});
